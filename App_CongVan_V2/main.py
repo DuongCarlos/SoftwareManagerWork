@@ -95,18 +95,19 @@ class AppController:
         
         self.update_window_title()
 
-        # NẠP DANH SÁCH NHÂN VIÊN VÀO COMBOBOX
         self.all_users_display = []
         self.admin_users_display = []
+        self.assignable_by_admin = []
         self.load_users_to_comboboxes()
 
         self.filter_employee = "" 
+        self.current_is_boss_task = False
 
-        # Cả Admin và Super Admin đều thấy cột Lãnh đạo
-        if self.current_role in ['admin', 'super_admin']:
+        if self.current_role == 'super_admin':
             self.btn_manage_users = ttk.Button(self.ui.btn_frame, text="👥 Quản lý Nhân viên", command=self.open_user_management)
             self.btn_manage_users.pack(side=tk.RIGHT, padx=5)
             
+        if self.current_role in ['admin', 'super_admin']:
             self.ui.sidebar_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 5), pady=5, before=self.ui.tree_frame)
             self.load_sidebar_users()
             self.ui.listbox_nhan_vien.bind("<<ListboxSelect>>", self.on_sidebar_select)
@@ -177,36 +178,36 @@ class AppController:
     def load_users_to_comboboxes(self):
         try:
             users_data = self.db.get_all_users() 
-            
             self.user_to_fullname = {}
             self.fullname_to_user = {}
             
             for u in users_data:
                 uname = u[0]
                 fname = u[3]
-                
                 disp_str = fname if (fname and fname.strip() != "") else uname
                 self.user_to_fullname[uname] = disp_str
                 self.fullname_to_user[disp_str] = uname
 
             self.all_users_display = [self.user_to_fullname[u[0]] for u in users_data]
-            
-            # Khách có thể trình báo cho cả admin và super_admin
             self.admin_users_display = [self.user_to_fullname[u[0]] for u in users_data if u[2] in ['admin', 'super_admin']]
+            self.assignable_by_admin = [self.user_to_fullname[u[0]] for u in users_data if u[2] != 'super_admin']
 
-            self.setup_user_combobox(self.ui.entries["Người Xử Lý:"], self.all_users_display)
-            
-            if self.current_role in ['admin', 'super_admin']:
-                self.setup_user_combobox(self.ui.entries["Báo Cáo:"], self.all_users_display)
+            if self.current_role == 'super_admin':
+                self.setup_user_combobox(self.ui.entries["Người Xử Lý:"], self.all_users_display)
+            elif self.current_role == 'admin':
+                self.setup_user_combobox(self.ui.entries["Người Xử Lý:"], self.assignable_by_admin)
             else:
-                self.setup_user_combobox(self.ui.entries["Báo Cáo:"], self.admin_users_display)
-                if self.admin_users_display:
-                    self.ui.entries["Báo Cáo:"].set(self.admin_users_display[0])
+                self.setup_user_combobox(self.ui.entries["Người Xử Lý:"], self.all_users_display)
+            
+            # ĐÃ CHỈNH SỬA: Ô BÁO CÁO LUÔN LUÔN LÀ ADMIN_USERS_DISPLAY (CHỈ CÓ LÃNH ĐẠO)
+            self.setup_user_combobox(self.ui.entries["Báo Cáo:"], self.admin_users_display)
+            if self.current_role not in ['admin', 'super_admin'] and self.admin_users_display:
+                self.ui.entries["Báo Cáo:"].set(self.admin_users_display[0])
 
         except Exception as e:
             print(f"Lỗi tải danh sách: {e}")
 
-    # ================= MÀN HÌNH QUẢN LÝ TÀI KHOẢN (ĐÃ THÊM TÍNH NĂNG SỬA) =================
+    # ================= MÀN HÌNH QUẢN LÝ TÀI KHOẢN =================
     def open_user_management(self):
         pop = tk.Toplevel(self.root)
         pop.title("Quản lý Tài khoản Nhân viên")
@@ -230,9 +231,7 @@ class AppController:
         txt_f.grid(row=1, column=1, padx=5, pady=5)
         
         ttk.Label(frame, text="Quyền:").grid(row=1, column=2, padx=5, pady=5, sticky='w')
-        
-        # PHÂN QUYỀN: Chỉ Super Admin mới được tạo/sửa cấp Super Admin
-        allowed_roles = ["user", "admin", "super_admin"] if self.current_role == 'super_admin' else ["user", "admin"]
+        allowed_roles = ["user", "admin", "super_admin"]
         combo_role = ttk.Combobox(frame, width=17, state="readonly", values=allowed_roles)
         combo_role.set("user")
         combo_role.grid(row=1, column=3, padx=5, pady=5)
@@ -240,7 +239,6 @@ class AppController:
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=2, column=0, columnspan=4, pady=10)
 
-        # CÁC HÀM XỬ LÝ NÚT BẤM CỦA FORM QUẢN LÝ
         def add_user():
             u = txt_u.get().strip()
             p = txt_p.get().strip()
@@ -264,13 +262,8 @@ class AppController:
             if txt_u['state'] == tk.NORMAL or not u:
                 messagebox.showwarning("Cảnh báo", "Vui lòng CHỌN 1 tài khoản từ bảng bên dưới để Sửa!")
                 return
-                
             if not p:
                 messagebox.showwarning("Thiếu thông tin", "Mật khẩu không được để trống!")
-                return
-
-            if self.current_role == 'admin' and r == 'super_admin':
-                messagebox.showerror("Lỗi quyền", "Lãnh đạo không có quyền thăng cấp thành Super Admin!")
                 return
 
             if self.db.update_user(u, p, r, f):
@@ -300,7 +293,6 @@ class AppController:
         tree_user.heading("f", text="Tên Đầy Đủ")
         tree_user.heading("p", text="Mật Khẩu")
         tree_user.heading("r", text="Quyền")
-        
         tree_user.column("u", width=120)
         tree_user.column("f", width=160)
         tree_user.column("p", width=100, anchor="center")
@@ -316,14 +308,11 @@ class AppController:
                     txt_u.config(state=tk.NORMAL)
                     txt_u.delete(0, tk.END)
                     txt_u.insert(0, r[0])
-                    txt_u.config(state="disabled") # Khóa Username khi sửa
-                    
+                    txt_u.config(state="disabled") 
                     txt_p.delete(0, tk.END)
                     txt_p.insert(0, r[1])
-                    
                     txt_f.delete(0, tk.END)
                     txt_f.insert(0, r[3] if r[3] else "")
-                    
                     combo_role.set(r[2])
                     break
 
@@ -333,7 +322,6 @@ class AppController:
             for row in tree_user.get_children(): tree_user.delete(row)
             for r in self.db.get_all_users():
                 tree_user.insert("", tk.END, iid=r[0], values=(r[0], r[3], "******", r[2]))
-            
             self.load_users_to_comboboxes()
             if self.current_role in ['admin', 'super_admin']:
                 self.load_sidebar_users()
@@ -346,19 +334,7 @@ class AppController:
             if not sel:
                 messagebox.showwarning("Cảnh báo", "Vui lòng chọn 1 tài khoản để Xóa!")
                 return
-                
             u = sel[0]
-            
-            target_role = ""
-            for row in self.db.get_all_users():
-                if row[0] == u:
-                    target_role = row[2]
-                    break
-                    
-            if target_role == 'super_admin' and self.current_role != 'super_admin':
-                messagebox.showerror("Lỗi quyền", "Bạn không có quyền xóa tài khoản Super Admin!")
-                return
-                
             if u == self.current_username:
                 messagebox.showerror("Lỗi", "Không thể tự xóa tài khoản của chính mình đang đăng nhập!")
                 return
@@ -371,12 +347,9 @@ class AppController:
         ttk.Button(pop, text="🗑️ Xóa Tài Khoản Đang Chọn", command=del_user).pack(pady=10)
 
     def update_window_title(self):
-        if self.current_role == "super_admin":
-            role_str = "Sếp Tổng (Super Admin)"
-        elif self.current_role == "admin":
-            role_str = "Lãnh đạo (Admin)"
-        else:
-            role_str = "Nhân viên"
+        if self.current_role == "super_admin": role_str = "Sếp Tổng (Super Admin)"
+        elif self.current_role == "admin": role_str = "Lãnh đạo (Admin)"
+        else: role_str = "Nhân viên"
             
         disp_name = self.user_to_fullname.get(self.current_username, self.current_username) if hasattr(self, 'user_to_fullname') else self.current_username
         self.root.title(f"Quản lý Công việc - [{role_str}: {disp_name}] - Máy chủ: {self.server_ip}")
@@ -394,24 +367,14 @@ class AppController:
                 self.refresh_table()
         except Exception as e:
             if is_startup:
-                new_ip = simpledialog.askstring(
-                    "Mất kết nối Máy Chủ", 
-                    f"Không thể kết nối đến Máy chủ [{ip}].\nNhập IP Máy chủ nội bộ để tiếp tục:\n(Ví dụ: 192.168.1.45)",
-                    parent=self.root
-                )
-                if new_ip:
-                    self.connect_to_server(new_ip.strip(), is_startup=True)
-                else:
-                    sys.exit() 
+                new_ip = simpledialog.askstring("Mất kết nối Máy Chủ", f"Không thể kết nối đến Máy chủ [{ip}].\nNhập IP Máy chủ nội bộ để tiếp tục:\n(Ví dụ: 192.168.1.45)", parent=self.root)
+                if new_ip: self.connect_to_server(new_ip.strip(), is_startup=True)
+                else: sys.exit() 
             else:
                 messagebox.showerror("Lỗi kết nối", f"Lỗi: {e}")
 
     def change_server_ip(self):
-        new_ip = simpledialog.askstring(
-            "Cấu hình Máy Chủ", 
-            f"IP Máy chủ hiện tại: {self.server_ip}\nNhập địa chỉ IP mới:",
-            initialvalue=self.server_ip, parent=self.root
-        )
+        new_ip = simpledialog.askstring("Cấu hình Máy Chủ", f"IP Máy chủ hiện tại: {self.server_ip}\nNhập địa chỉ IP mới:", initialvalue=self.server_ip, parent=self.root)
         if new_ip and new_ip.strip() != self.server_ip:
             self.connect_to_server(new_ip.strip())
 
@@ -481,8 +444,7 @@ class AppController:
                 if uname in nxl or uname in ntk:
                     has_permission = True
                     
-            if not has_permission:
-                continue
+            if not has_permission: continue
                 
             match_kw = True
             if search_kw:
@@ -502,11 +464,9 @@ class AppController:
             
             match_status = True
             if search_status != "Tất cả":
-                if str(r[11]) != search_status:
-                    match_status = False
+                if str(r[11]) != search_status: match_status = False
                     
-            if match_kw and match_status:
-                valid_ids.add(r[0]) 
+            if match_kw and match_status: valid_ids.add(r[0]) 
         
         added_new = True
         while added_new:
@@ -526,8 +486,7 @@ class AppController:
         def insert_node(parent_id, current_iid, level):
             if parent_id not in tree_data: return
             for r in tree_data[parent_id]:
-                if is_searching and r[0] not in valid_ids:
-                    continue 
+                if is_searching and r[0] not in valid_ids: continue 
                     
                 tag = self.get_tag_color(r[11])
                 ty_le = progress_map.get(r[0], "")
@@ -547,8 +506,7 @@ class AppController:
                 
                 try:
                     self.ui.tree.insert(current_iid, tk.END, iid=str(r[0]), values=display_values, tags=(tag,))
-                    if current_iid != "":
-                        self.ui.tree.item(current_iid, open=True) 
+                    if current_iid != "": self.ui.tree.item(current_iid, open=True) 
                 except tk.TclError:
                     self.ui.tree.insert("", tk.END, iid=str(r[0]), values=display_values, tags=(tag,))
                 
@@ -556,7 +514,7 @@ class AppController:
                 
         insert_node(0, "", 0)
 
-    # ================= CÁC HÀM XỬ LÝ VIỆC ĐỊNH KỲ =================
+    # ================= TỰ ĐỘNG SINH MẪU ĐỊNH KỲ =================
     def auto_spawn_scheduled_tasks(self):
         today = datetime.now()
         today_str = today.strftime("%d/%m/%Y")
@@ -572,7 +530,7 @@ class AppController:
             should_create = False
             if str(t_ngaytao) != today_str:
                 if t_loai == "Hàng ngày": should_create = True
-                elif t_loai == "Hàng tuần" and str(t_chitiet) == today_weekday: schedule_create = True
+                elif t_loai == "Hàng tuần" and str(t_chitiet) == today_weekday: should_create = True
                 elif t_loai == "Hàng tháng" and str(t_chitiet) == today_day: should_create = True
             if should_create:
                 try: days = int(t_songay)
@@ -601,17 +559,22 @@ class AppController:
         ttk.Label(form_frame, text="Người Xử Lý:").grid(row=0, column=3, padx=5, pady=5, sticky="nw")
         self.sch_nxl = ttk.Combobox(form_frame, width=23)
         self.sch_nxl.grid(row=0, column=4, padx=5, pady=5, sticky="w")
-        self.setup_user_combobox(self.sch_nxl, self.all_users_display)
         
+        if self.current_role == 'super_admin':
+            self.setup_user_combobox(self.sch_nxl, self.all_users_display)
+        elif self.current_role == 'admin':
+            self.setup_user_combobox(self.sch_nxl, self.assignable_by_admin)
+        else:
+            self.setup_user_combobox(self.sch_nxl, self.all_users_display)
+            
         ttk.Label(form_frame, text="Báo Cáo:").grid(row=0, column=5, padx=5, pady=5, sticky="nw")
         self.sch_ntk = ttk.Combobox(form_frame, width=23)
         self.sch_ntk.grid(row=0, column=6, padx=5, pady=5, sticky="w")
-        if self.current_role in ['admin', 'super_admin']:
-            self.setup_user_combobox(self.sch_ntk, self.all_users_display)
-        else:
-            self.setup_user_combobox(self.sch_ntk, self.admin_users_display)
-            if self.admin_users_display:
-                self.sch_ntk.insert(0, self.admin_users_display[0])
+        
+        # ĐÃ CHỈNH SỬA: Ô BÁO CÁO LUÔN LUÔN LÀ ADMIN_USERS_DISPLAY (CHỈ CÓ LÃNH ĐẠO)
+        self.setup_user_combobox(self.sch_ntk, self.admin_users_display)
+        if self.current_role not in ['admin', 'super_admin'] and self.admin_users_display:
+            self.sch_ntk.insert(0, self.admin_users_display[0])
         
         ttk.Label(form_frame, text="Nội dung:").grid(row=1, column=0, padx=5, pady=5, sticky="nw")
         self.sch_nd = tk.Text(form_frame, height=3, width=105, wrap=tk.WORD)
@@ -816,29 +779,54 @@ class AppController:
             nxl_disp = self.user_to_fullname.get(t[3], t[3]) if t[3] else ""
             self.tree_sch.insert("", tk.END, iid=str(t[0]), values=(t[0], t[1], t[5], t[6], t[10], t[9], nxl_disp, t[7]))
 
-    # ================= KHÓA Ô CHO NHÂN VIÊN Ở MÀN HÌNH CHÍNH =================
-    def set_form_state(self, state):
-        text_state = tk.NORMAL if state == "normal" else tk.DISABLED
+    # ================= NÂNG CẤP BẢO MẬT: KHÓA FORM NGHIÊM NGẶT =================
+    def set_form_state(self, state, is_boss_task=False):
+        is_user = self.current_role not in ['admin', 'super_admin']
+        lock_all = is_user and is_boss_task
+        
+        text_state = tk.DISABLED if lock_all else (tk.NORMAL if state == "normal" else tk.DISABLED)
         self.ui.txt_ten_cv.config(state=text_state)
         self.ui.txt_noi_dung.config(state=text_state)
+        
         for field, entry in self.ui.entries.items():
             if field == "Trạng Thái:":
                 entry.config(state="readonly" if state == "normal" else "disabled")
-            elif field == "Người Xử Lý:" and self.current_role not in ['admin', 'super_admin']:
+            elif field == "Ngày Hoàn Thành:":
                 entry.config(state="disabled") 
+            elif field == "Người Xử Lý:" and is_user:
+                entry.config(state="disabled") 
+            elif field == "Báo Cáo:" and is_user:
+                if lock_all:
+                    entry.config(state="disabled")
+                else:
+                    entry.config(state=tk.NORMAL if state == "normal" else tk.DISABLED)
             else:
-                entry.config(state=state)
-        btn_state = tk.NORMAL if state == "normal" else tk.DISABLED
+                entry_state = tk.DISABLED if lock_all else (tk.NORMAL if state == "normal" else tk.DISABLED)
+                if isinstance(entry, ttk.Combobox) and entry_state == tk.NORMAL:
+                    entry_state = "readonly" if field == "Trạng Thái:" else tk.NORMAL
+                entry.config(state=entry_state)
+                
+        btn_state = tk.DISABLED if lock_all else (tk.NORMAL if state == "normal" else tk.DISABLED)
         self.ui.btn_upload.config(state=btn_state)
         self.ui.btn_remove_file.config(state=btn_state)
-        self.ui.btn_update.config(state=btn_state) 
+        self.ui.btn_update.config(state=tk.NORMAL if state == "normal" else tk.DISABLED) 
 
     def handle_edit_click(self):
         if not self.current_selected_id:
             messagebox.showwarning("Cảnh báo", "Vui lòng chọn 1 công việc để chỉnh sửa!")
             return
-        self.set_form_state("normal")
+        
+        self.set_form_state("normal", is_boss_task=getattr(self, 'current_is_boss_task', False))
         self.ui.btn_edit.config(state=tk.DISABLED)
+
+    def on_main_status_change(self, event=None):
+        val = self.ui.entries["Trạng Thái:"].get()
+        self.ui.entries["Ngày Hoàn Thành:"].config(state="normal")
+        if val in ["Đã hoàn thành", "Hoàn thành chậm"]:
+            self.ui.entries["Ngày Hoàn Thành:"].set_date(datetime.now())
+        else:
+            self.ui.entries["Ngày Hoàn Thành:"].delete(0, tk.END)
+        self.ui.entries["Ngày Hoàn Thành:"].config(state="disabled")
 
     # ================= POPUP THÊM MỚI (TẠO CÔNG VIỆC) =================
     def open_add_popup(self):
@@ -939,28 +927,37 @@ class AppController:
                 entry = ttk.Combobox(form_frame, width=28, state="readonly", values=["Đang xử lý", "Đang đợi phản hồi", "Đã hoàn thành", "Chậm tiến độ", "Hoàn thành chậm"])
                 entry.set("Đang xử lý")
                 def on_pop_status_change(event):
-                    if self.pop_entries["Trạng Thái:"].get() in ["Đã hoàn thành", "Hoàn thành chậm"]:
+                    val = self.pop_entries["Trạng Thái:"].get()
+                    self.pop_entries["Ngày Hoàn Thành:"].config(state="normal")
+                    if val in ["Đã hoàn thành", "Hoàn thành chậm"]:
                         self.pop_entries["Ngày Hoàn Thành:"].set_date(datetime.now())
+                    else:
+                        self.pop_entries["Ngày Hoàn Thành:"].delete(0, tk.END)
+                    self.pop_entries["Ngày Hoàn Thành:"].config(state="disabled")
                 entry.bind("<<ComboboxSelected>>", on_pop_status_change)
             elif field in ["Ngày Nhận:", "Ngày Bắt Đầu:", "Ngày Kết Thúc:", "Ngày Hoàn Thành:"]:
                 entry = DateEntry(form_frame, width=29, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
                 entry.delete(0, tk.END)
+                if field == "Ngày Hoàn Thành:":
+                    entry.config(state="disabled") 
             elif field in ["Người Xử Lý:", "Báo Cáo:"]:
                 entry = ttk.Combobox(form_frame, width=29)
                 
                 if field == "Người Xử Lý:":
-                    self.setup_user_combobox(entry, self.all_users_display)
-                    if self.current_role not in ['admin', 'super_admin']:
+                    if self.current_role == 'super_admin':
+                        self.setup_user_combobox(entry, self.all_users_display)
+                    elif self.current_role == 'admin':
+                        self.setup_user_combobox(entry, self.assignable_by_admin)
+                    else:
+                        self.setup_user_combobox(entry, self.all_users_display)
                         disp_name = self.user_to_fullname.get(self.current_username, self.current_username)
                         entry.insert(0, disp_name)
                         entry.config(state="disabled") 
                 else: 
-                    if self.current_role in ['admin', 'super_admin']:
-                        self.setup_user_combobox(entry, self.all_users_display)
-                    else:
-                        self.setup_user_combobox(entry, self.admin_users_display)
-                        if self.admin_users_display:
-                            entry.insert(0, self.admin_users_display[0])
+                    # ĐÃ CHỈNH SỬA: Ô BÁO CÁO Ở TẠO MỚI CŨNG CHỈ CÓ LÃNH ĐẠO
+                    self.setup_user_combobox(entry, self.admin_users_display)
+                    if self.current_role not in ['admin', 'super_admin'] and self.admin_users_display:
+                        entry.insert(0, self.admin_users_display[0])
             else:
                 entry = ttk.Entry(form_frame, width=31)
                 
@@ -1003,8 +1000,12 @@ class AppController:
             return
 
         if self.current_role in ['admin', 'super_admin']:
+            disp_name = self.user_to_fullname.get(self.current_username, self.current_username)
             if not ten_cv.startswith("⭐"):
-                ten_cv = f"⭐ {ten_cv}"
+                ten_cv = f"⭐[{disp_name}] {ten_cv}"
+            elif ten_cv.startswith("⭐") and "⭐[" not in ten_cv:
+                clean_name = ten_cv.lstrip("⭐ ").strip()
+                ten_cv = f"⭐[{disp_name}] {clean_name}"
 
         safe_paths = []
         for path in self.popup_attached_files:
@@ -1077,6 +1078,32 @@ class AppController:
             return d1 > d2
         except Exception: return False 
 
+    def auto_correct_status(self, form_tuple):
+        data_list = list(form_tuple)
+        ngay_kt = data_list[7] 
+        ngay_ht = data_list[8] 
+        trang_thai = data_list[9] 
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        
+        if trang_thai in ["Đã hoàn thành", "Hoàn thành chậm"]:
+            if not ngay_ht:
+                ngay_ht = today_str
+                data_list[8] = ngay_ht
+            if self.is_date_after(ngay_ht, ngay_kt): 
+                data_list[9] = "Hoàn thành chậm"
+            else: 
+                data_list[9] = "Đã hoàn thành"
+        elif trang_thai in ["Đang xử lý", "Chậm tiến độ"]:
+            data_list[8] = ""
+            if self.is_date_after(today_str, ngay_kt): 
+                data_list[9] = "Chậm tiến độ"
+            else: 
+                data_list[9] = "Đang xử lý"
+        elif trang_thai == "Đang đợi phản hồi":
+            data_list[8] = ""
+            
+        return tuple(data_list)
+
     def auto_scan_overdue_tasks(self):
         rows = self.db.get_all_cong_van()
         today_str = datetime.now().strftime("%d/%m/%Y")
@@ -1086,21 +1113,6 @@ class AppController:
             trang_thai = row[11]
             if trang_thai == "Đang xử lý" and self.is_date_after(today_str, ngay_kt):
                 self.db.update_trang_thai(record_id, "Chậm tiến độ")
-
-    def auto_correct_status(self, form_tuple):
-        data_list = list(form_tuple)
-        ngay_kt = data_list[7] 
-        ngay_ht = data_list[8] 
-        trang_thai = data_list[9] 
-        today_str = datetime.now().strftime("%d/%m/%Y")
-        
-        if trang_thai in ["Đã hoàn thành", "Hoàn thành chậm"]:
-            if self.is_date_after(ngay_ht, ngay_kt): data_list[9] = "Hoàn thành chậm"
-            else: data_list[9] = "Đã hoàn thành"
-        elif trang_thai in ["Đang xử lý", "Chậm tiến độ"]:
-            if self.is_date_after(today_str, ngay_kt): data_list[9] = "Chậm tiến độ"
-            else: data_list[9] = "Đang xử lý"
-        return tuple(data_list)
 
     def process_attached_file(self, original_path):
         if not original_path or not os.path.exists(original_path): return ""
@@ -1112,11 +1124,6 @@ class AppController:
             shutil.copy2(original_path, dest_path)
             return dest_path 
         except Exception: return original_path
-
-    def on_main_status_change(self, event):
-        val = self.ui.entries["Trạng Thái:"].get()
-        if val in ["Đã hoàn thành", "Hoàn thành chậm"]:
-            self.ui.entries["Ngày Hoàn Thành:"].set_date(datetime.now())
 
     def handle_upload(self):
         file_paths = filedialog.askopenfilenames(title="Chọn file đính kèm", filetypes=[("Tất cả", "*.*")])
@@ -1197,8 +1204,12 @@ class AppController:
         data_list[2] = tai_lieu_dinh_kem_str 
 
         if self.current_role in ['admin', 'super_admin']:
+            disp_name = self.user_to_fullname.get(self.current_username, self.current_username)
             if not data_list[0].startswith("⭐"):
-                data_list[0] = f"⭐ {data_list[0]}"
+                data_list[0] = f"⭐[{disp_name}] {data_list[0]}"
+            elif data_list[0].startswith("⭐") and "⭐[" not in data_list[0]:
+                clean_name = data_list[0].lstrip("⭐ ").strip()
+                data_list[0] = f"⭐[{disp_name}] {clean_name}"
         
         new_ngay_tam_dung, new_ngay_kt = self.calculate_hold_logic(old_status, data_list[9], old_ngay_tam_dung, data_list[7])
         data_list[7] = new_ngay_kt
@@ -1233,13 +1244,22 @@ class AppController:
         self.current_selected_id = None 
         self.current_parent_id = 0
         self.current_attached_files = []
+        self.current_is_boss_task = False
+        
         self.set_form_state("normal") 
         self.ui.listbox_files.delete(0, tk.END)
         self.ui.txt_ten_cv.delete("1.0", tk.END)
         self.ui.txt_noi_dung.delete("1.0", tk.END)
         for field, entry in self.ui.entries.items():
             if field == "Trạng Thái:": entry.set("Đang xử lý") 
-            else: entry.set('') if isinstance(entry, ttk.Combobox) else entry.delete(0, tk.END)
+            else: 
+                if field == "Ngày Hoàn Thành:":
+                    entry.config(state="normal")
+                    entry.delete(0, tk.END)
+                    entry.config(state="disabled")
+                else:
+                    entry.set('') if isinstance(entry, ttk.Combobox) else entry.delete(0, tk.END)
+                    
         self.set_form_state("disabled") 
         self.ui.btn_edit.config(state=tk.DISABLED)
 
@@ -1257,6 +1277,8 @@ class AppController:
             full_data = self.db.cursor.fetchone()
             
             if full_data:
+                self.current_is_boss_task = str(full_data[2]).startswith("⭐")
+                
                 self.set_form_state("normal") 
                 self.current_parent_id = full_data[1] 
                 self.ui.txt_ten_cv.insert(tk.END, str(full_data[2]) if str(full_data[2]) != "None" else "")
@@ -1274,14 +1296,20 @@ class AppController:
                 self.ui.entries["Ngày Bắt Đầu:"].insert(0, str(full_data[8]) if str(full_data[8]) != "None" else "")
                 self.ui.entries["Ngày Kết Thúc:"].delete(0, tk.END)
                 self.ui.entries["Ngày Kết Thúc:"].insert(0, str(full_data[9]) if str(full_data[9]) != "None" else "")
+                
+                self.ui.entries["Ngày Hoàn Thành:"].config(state="normal")
                 self.ui.entries["Ngày Hoàn Thành:"].delete(0, tk.END)
-                self.ui.entries["Ngày Hoàn Thành:"].insert(0, str(full_data[10]) if str(full_data[10]) != "None" else "")
+                if full_data[10] and str(full_data[10]) != "None":
+                    self.ui.entries["Ngày Hoàn Thành:"].insert(0, str(full_data[10]))
+                self.ui.entries["Ngày Hoàn Thành:"].config(state="disabled")
+                
                 self.ui.entries["Trạng Thái:"].set(str(full_data[11]))
                 
                 file_path_str = str(full_data[12]) if full_data[12] and full_data[12] != "None" else ""
                 self.current_attached_files = file_path_str.split("|") if file_path_str else []
                 for p in self.current_attached_files:
                     if p.strip(): self.ui.listbox_files.insert(tk.END, os.path.basename(p))
+                
                 self.set_form_state("disabled") 
                 self.ui.btn_edit.config(state=tk.NORMAL) 
 
