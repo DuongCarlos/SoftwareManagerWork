@@ -24,7 +24,8 @@ class MainWindowUI:
         self.txt_noi_dung.grid(row=1, column=1, columnspan=3, padx=10, pady=5, sticky="w")
 
         self.entries = {}
-        fields = ["Người Xử Lý:", "Người Trình ký VB:", "Ngày Nhận:", "Ngày Bắt Đầu:", "Ngày Kết Thúc:", "Ngày Hoàn Thành:", "Trạng Thái:"]
+        # ĐÃ ĐỔI TÊN THÀNH "Báo Cáo:"
+        fields = ["Người Xử Lý:", "Báo Cáo:", "Ngày Nhận:", "Ngày Bắt Đầu:", "Ngày Kết Thúc:", "Ngày Hoàn Thành:", "Trạng Thái:"]
         
         for idx, field in enumerate(fields):
             row = 2 + (idx // 2)
@@ -39,6 +40,8 @@ class MainWindowUI:
                 entry = DateEntry(self.top_frame, width=33, background='darkblue', 
                                   foreground='white', borderwidth=2, date_pattern='dd/mm/yyyy')
                 entry.delete(0, tk.END)
+            elif field in ["Người Xử Lý:", "Báo Cáo:"]:
+                entry = ttk.Combobox(self.top_frame, width=33)
             else:
                 entry = ttk.Entry(self.top_frame, width=35)
                 
@@ -79,8 +82,8 @@ class MainWindowUI:
         self.btn_cancel = ttk.Button(self.btn_frame, text="❌ Hủy Chọn / Reset Form")
         self.btn_cancel.pack(side=tk.LEFT, padx=5)
 
-        self.btn_open_db = ttk.Button(self.btn_frame, text="📂 Mở DB khác")
-        self.btn_open_db.pack(side=tk.RIGHT, padx=5)
+        self.btn_config_ip = ttk.Button(self.btn_frame, text="⚙️ Cấu hình IP Máy chủ")
+        self.btn_config_ip.pack(side=tk.RIGHT, padx=5)
         
         self.btn_export_excel = ttk.Button(self.btn_frame, text="📊 Xuất Excel")
         self.btn_export_excel.pack(side=tk.RIGHT, padx=5)
@@ -92,7 +95,17 @@ class MainWindowUI:
         self.bottom_frame = ttk.LabelFrame(self.root, text="Danh sách Công việc")
         self.bottom_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        search_frame = ttk.Frame(self.bottom_frame)
+        self.bottom_container = ttk.Frame(self.bottom_frame)
+        self.bottom_container.pack(fill=tk.BOTH, expand=True)
+
+        self.sidebar_frame = ttk.LabelFrame(self.bottom_container, text="Lọc theo Nhân viên")
+        self.listbox_nhan_vien = tk.Listbox(self.sidebar_frame, width=22, font=("Segoe UI", 10), selectbackground="#0078D7")
+        self.listbox_nhan_vien.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        self.tree_frame = ttk.Frame(self.bottom_container)
+        self.tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        search_frame = ttk.Frame(self.tree_frame)
         search_frame.pack(fill=tk.X, padx=10, pady=5)
         
         ttk.Label(search_frame, text="🔍 Tìm theo ID, Tên, ND, Ngày:").pack(side=tk.LEFT, padx=5)
@@ -115,13 +128,13 @@ class MainWindowUI:
         style.configure("Treeview.Heading", font=('Segoe UI', 9, 'bold'))
         style.configure("Treeview", rowheight=25)
 
-        y_scroll = ttk.Scrollbar(self.bottom_frame, orient=tk.VERTICAL)
+        y_scroll = ttk.Scrollbar(self.tree_frame, orient=tk.VERTICAL)
         y_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        x_scroll = ttk.Scrollbar(self.bottom_frame, orient=tk.HORIZONTAL)
+        x_scroll = ttk.Scrollbar(self.tree_frame, orient=tk.HORIZONTAL)
         x_scroll.pack(side=tk.BOTTOM, fill=tk.X)
 
         columns = ("id", "ten_cong_viec", "noi_dung", "tai_lieu_dinh_kem", "nguoi_xu_ly", "nguoi_trinh_ky", "ngay_nhan", "ngay_bat_dau", "ngay_ket_thuc", "ngay_hoan_thanh", "trang_thai", "ty_le")
-        self.tree = ttk.Treeview(self.bottom_frame, columns=columns, show="headings",
+        self.tree = ttk.Treeview(self.tree_frame, columns=columns, show="headings",
                                  yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
         
         y_scroll.config(command=self.tree.yview)
@@ -132,7 +145,7 @@ class MainWindowUI:
         self.tree.heading("noi_dung", text="Nội Dung Chi Tiết", anchor="w")
         self.tree.heading("tai_lieu_dinh_kem", text="Tài Liệu Đính Kèm", anchor="w")
         self.tree.heading("nguoi_xu_ly", text="Người Xử Lý", anchor="center")
-        self.tree.heading("nguoi_trinh_ky", text="Người Trình Ký", anchor="center")
+        self.tree.heading("nguoi_trinh_ky", text="Báo Cáo", anchor="center") # ĐÃ ĐỔI TÊN TRÊN BẢNG
         self.tree.heading("ngay_nhan", text="Ngày Nhận", anchor="center")
         self.tree.heading("ngay_bat_dau", text="Ngày Bắt Đầu", anchor="center")
         self.tree.heading("ngay_ket_thuc", text="Ngày Kết Thúc", anchor="center")
@@ -153,11 +166,10 @@ class MainWindowUI:
         self.tree.column("trang_thai", width=125, anchor="center", stretch=False)
         self.tree.column("ty_le", width=85, anchor="center", stretch=False)
 
-        # CẤU HÌNH MÀU SẮC MỚI
         self.tree.tag_configure('hoan_thanh', background='#d4edda')       
         self.tree.tag_configure('dang_xu_ly', background='#fff3cd')       
         self.tree.tag_configure('cham_tien_do', background='#f8d7da')     
         self.tree.tag_configure('hoan_thanh_cham', background='#cce5ff')  
-        self.tree.tag_configure('doi_phan_hoi', background='#e2e3e5') # Trạng thái Đợi phản hồi -> Màu xám nhạt
+        self.tree.tag_configure('doi_phan_hoi', background='#e2e3e5') 
 
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
