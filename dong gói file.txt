@@ -1,0 +1,1 @@
+pyinstaller --noconsole --onefile --collect-all mysql.connector --hidden-import mysql.connector.plugins.mysql_native_password --hidden-import mysql.connector.plugins.caching_sha2_password main.py
